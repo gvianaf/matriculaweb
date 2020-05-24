@@ -1,0 +1,95 @@
+---
+title: "Disciplinas no MatrículaWeb UnB"
+author: "Guilherme Viana"
+date: "29/04/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set
+library(rvest)
+library(tidyverse)
+library(glue)
+load("D:/DAI-DPO/Completo/14042020/Completo14042020.RData")
+```
+
+## Leitura de uma página
+
+```{r}
+url <- "https://matriculaweb.unb.br/graduacao/curriculo.aspx?cod=1376"
+webpage <- read_html(url)
+# table_data <- html_nodes(webpage, ".table-bordered")
+table_data <- html_nodes(webpage, xpath = "//*[@id='datatable']")
+
+header <- table_data[1] %>% map_df(html_table)
+
+table_data <- table_data[-1]
+
+tabela <- table_data %>% 
+  pluck() %>% 
+  map_df(html_table) %>% 
+  mutate(CodCurso = header$X2[1],
+         CodOpcao = header$X2[2]) %>% 
+  select(CodCurso, CodOpcao, CodDisciplina = Código, Disciplina)
+
+
+rio::export(tabela, glue("Disciplinas_OBT_OPT_{header$X3[1]}_{header$X2[2]}.xlsx"))
+
+```
+
+## Leitura de todas as páginas
+
+```{r}
+
+# pega os CodOpcao únicos que tinham algum matriculado em 2019
+codigos <- Completo %>% 
+  filter(`Ano Ingresso Opcao` <= 2019,
+         `Ano Saida Opcao` >= 2019,
+         Nivel == "Graduacao") %>% 
+  select(CodOpcao) %>% 
+  unique()
+
+# cria data.frame vazio para ser preenchido
+temp <- data.frame()
+
+for (opcao in unique(codigos$CodOpcao)){
+  
+  tryCatch(   # necessário para processar os erros e manter a execução do loop
+    
+    {
+      url <- glue("https://matriculaweb.unb.br/graduacao/curriculo.aspx?cod={opcao}")
+      
+      webpage <- read_html(url)
+      
+      table_data <- html_nodes(webpage, xpath = "//*[@id='datatable']")
+      
+      header <- table_data[1] %>% map_df(html_table)
+      
+      table_data <- table_data[-1]
+      
+      tabela <- table_data %>% 
+        pluck() %>% 
+        map_df(html_table) %>% 
+        mutate(CodCurso = as.double(header$X2[1]),
+               CodOpcao = as.double(header$X2[2])) %>% 
+        select(CodCurso, CodOpcao, CodDisciplina = Código, Disciplina)
+      
+      temp <- temp %>% 
+        bind_rows(tabela)},
+    
+    error = function(e){
+      
+      message(e)
+      return(NA)
+    
+    }
+  )
+  
+}
+
+rio::export(tabela, "Disciplinas_MW_OBT_OPT.xlsx")
+
+```
+
+
+
